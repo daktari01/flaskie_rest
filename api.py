@@ -1,7 +1,7 @@
-from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate, MigrateCommand 
+from flask import Flask, request, jsonify, make_response
+from flask_sqlalchemy import SQLAlchemy 
 import uuid
+import psycopg2
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
@@ -10,27 +10,24 @@ app.config['SECRET_KEY'] = 'thisissecret'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql:///todo_db'
 
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)
 
 class User(db.Model):
-
-    __tablename__ = 'users'
 
     id = db.Column(db.Integer, primary_key=True)
     public_id = db.Column(db.String(200), unique=True)
     name = db.Column(db.String(50))
     password = db.Column(db.String(250))
     admin = db.Column(db.Boolean)
-    todos = db.relationship('Todo', order_by='Todo.id', cascade='all, delete-orphan')
+    todos = db.relationship('Todo', backref='user', lazy='dynamic')
+    
 
 class Todo(db.Model):
-
-    __tablename__ = "todos"
 
     id = db.Column(db.Integer, primary_key=True)
     text = db.Column(db.String(50))
     complete = db.Column(db.Boolean)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+
 
 @app.route('/users', methods=['GET'])
 def get_all_users():
@@ -71,12 +68,26 @@ def create_user():
     return jsonify({'message' : 'New user created!'})
 
 @app.route('/user/<public_id>', methods=['PUT'])
-def promote_user():
-    return ""
+def promote_user(public_id):
+    user = User.query.filter_by(public_id=public_id).first()
+    if not user:
+        return jsonify({'message' : 'No user found'})
+    user.admin = True
+    db.session.commit()
+    return jsonify({'message' : 'The user has been promoted!'})
 
 @app.route('/user/<public_id>', methods=['DELETE'])
-def delete_user():
-    return ""
+def delete_user(public_id):
+    user = User.query.filter_by(public_id=public_id).first()
+    if not user:
+        return jsonify({'message' : 'No user found'})
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({'message' : 'The user has been deleted!'})
+
+
+
+
 
 
 if __name__ == "__main__":
